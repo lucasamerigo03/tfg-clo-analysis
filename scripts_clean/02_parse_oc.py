@@ -4,6 +4,7 @@ import pandas as pd
 from tqdm import tqdm
 from datetime import datetime
 
+# month name to number mapping used throughout date parsing functions
 MONTH_MAP = {
     "january": 1, "february": 2, "march": 3, "april": 4,
     "may": 5, "june": 6, "july": 7, "august": 8,
@@ -15,15 +16,10 @@ PROCESSED_DIR = os.path.join("data", "processed")
 os.makedirs(PROCESSED_DIR, exist_ok=True)
 
 
-# ---------------------------------------------------------------------------
-# Extraction functions — one per variable
-# ---------------------------------------------------------------------------
+# Extraction functions - one per variable
 
 def extract_manager_and_deal(filename):
-    """
-    Extracts the manager and deal name from the filename.
-    Expected format: MANAGER_DealName_YEAR-NUMBER.txt
-    """
+    # parse manager and deal name from filename (format: MANAGER_DealName_YEAR-N.txt)
     base = filename.replace(".txt", "")
     parts = base.split("_", 1)
     manager = parts[0] if len(parts) > 0 else None
@@ -32,10 +28,7 @@ def extract_manager_and_deal(filename):
 
 
 def extract_vintage(filename):
-    """
-    Extracts the issuance year from the filename.
-    Looks for a 4-digit year followed by a hyphen and a number.
-    """
+    # extract 4-digit year from filename
     match = re.search(r'(\d{4})-\d+', filename)
     if match:
         return int(match.group(1))
@@ -43,18 +36,8 @@ def extract_vintage(filename):
 
 
 def extract_total_deal_size(text):
-    """
-    Extracts the total deal size in millions of euros by summing tranche amounts
-    listed on the cover page.
-
-    Covers three cover page formats:
-      - Standard: one line per tranche '€206,500,000 Class A Senior...'
-      - Table format (Tikehau): 'A €248,000,000 100%...'
-      - Paragraph format: amounts in running text, with or without space before 'Class'
-
-    Excludes lines with 'Up to' (undrawn facilities not disbursed on Issue Date).
-    Searches the full text to handle documents with 'IMPORTANT NOTICE' preambles.
-    """
+    # sum all tranche amounts from cover page; handles 3 formatting variants
+    # excludes 'Up to' lines (undrawn facilities)
     TRANCHE_PATTERN = r'[€]\s*([\d,]+)\s*(?:Class\s+[A-Z]|Subordinated)'
 
     block_start = re.search(TRANCHE_PATTERN, text)
@@ -88,6 +71,7 @@ def extract_total_deal_size(text):
             m = re.search(TRANCHE_PATTERN, line)
             if m:
                 value = float(m.group(1).replace(",", ""))
+                # threshold filters out page numbers / reference numbers
                 if value >= 100_000:
                     total += value
         if total > 0:
@@ -106,10 +90,7 @@ def extract_total_deal_size(text):
 
 
 def parse_date_string(date_str):
-    """
-    Converts a date string to a datetime object.
-    Accepts: '25 April 2030', '15 January 2029', 'October 2021'.
-    """
+    # converts '25 April 2030' or 'October 2021' to datetime
     date_str = date_str.strip()
     match = re.match(r'(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})', date_str)
     if match:
@@ -128,21 +109,12 @@ def parse_date_string(date_str):
 
 
 def extract_issue_date(text):
-    """
-    Extracts the Issue Date from the OC. Used as the start point for computing
-    exact period durations in deals issued outside of January.
-
-    Covers the most common formats in European CLO OCs:
-      - 'On or about 24 November 2022 (the "Issue Date")'
-      - '"Issue Date" means 19 January 2023'
-      - 'dated 19 January 2023 (the "Issue Date")'
-      - 'Issue Date .............. 19 January 2023'
-    """
+    # extract Issue Date from OC; used for precise period duration calculation
     patterns = [
-        r'[Oo]n\s+or\s+about\s+(\d{1,2}\s+[A-Za-z]+\s+\d{4})\s*\(?(?:the\s+)?["“]?Issue\s+Date',
-        r'["“]Issue\s+Date["”]\s+means\s+(\d{1,2}\s+[A-Za-z]+\s+\d{4})',
+        r'[Oo]n\s+or\s+about\s+(\d{1,2}\s+[A-Za-z]+\s+\d{4})\s*\(?(?:the\s+)?[""]?Issue\s+Date',
+        r'[""]Issue\s+Date[""]\s+means\s+(\d{1,2}\s+[A-Za-z]+\s+\d{4})',
         r'Issue\s+Date[:\s]+(\d{1,2}\s+[A-Za-z]+\s+\d{4})',
-        r'dated\s+(\d{1,2}\s+[A-Za-z]+\s+\d{4})\s*\(?(?:the\s+)?["“]?Issue\s+Date',
+        r'dated\s+(\d{1,2}\s+[A-Za-z]+\s+\d{4})\s*\(?(?:the\s+)?[""]?Issue\s+Date',
         r'Issue\s+Date\s*\.{2,}\s*(\d{1,2}\s+[A-Za-z]+\s+\d{4})',
     ]
     for pat in patterns:
@@ -155,11 +127,7 @@ def extract_issue_date(text):
 
 
 def _calc_duration(end_date, issue_date, vintage, min_years=0.5, max_years=8.0):
-    """
-    Calculates duration in years between an end date and the deal start.
-    Uses Issue Date when available; falls back to January of the vintage year.
-    Returns None if the result falls outside the expected range.
-    """
+    # duration in years from issue date (or vintage year as fallback)
     if issue_date:
         duration = round((end_date - issue_date).days / 365.25, 1)
     elif vintage:
@@ -170,17 +138,9 @@ def _calc_duration(end_date, issue_date, vintage, min_years=0.5, max_years=8.0):
 
 
 def extract_reinvestment_period(text, vintage=None):
-    """
-    Extracts the Reinvestment Period end date and calculates its duration in years.
-    Locates the legal definition and captures the date from clause (a)/(i).
-    Tolerant of merged words, typos, and definition-table formatting.
-    Returns (end_date_str, duration_years) or (None, None) if not found.
-
-    Duration is calculated from the Issue Date (if extractable) or from
-    January of the vintage year as a fallback.
-    """
+    # find reinvestment period end date from legal definition, return (date_str, years)
     block_match = re.search(
-        r'[“‘"]Reinvestment\s+Period[”’"]\s+means\s+the\s+period\s+from.{0,800}',
+        r'["'"]Reinvestment\s+Period["'"]\s+means\s+the\s+period\s+from.{0,800}',
         text,
         re.DOTALL
     )
@@ -195,6 +155,7 @@ def extract_reinvestment_period(text, vintage=None):
     if not block_match:
         return None, None
 
+    # limit to 800 chars - enough to capture the end date, avoids false positives
     block = block_match.group(0)[:800]
 
     date_patterns = [
@@ -223,15 +184,9 @@ def extract_reinvestment_period(text, vintage=None):
 
 
 def extract_non_call_period(text, vintage=None):
-    """
-    Extracts the Non-Call Period duration in years.
-    Locates the formal definition and calculates duration from the Issue Date
-    (if extractable) or from January of the vintage year as a fallback.
-    Handles variants: date on the next line, date split across lines, and
-    definition-table formats with encoding-broken quotes.
-    """
+    # extract non-call period duration in years from legal definition
     block_match = re.search(
-        r'[“‘"]Non-Call\s+Period[”’"]\s*'
+        r'["'"]Non-Call\s+Period["'"]\s*'
         r'(?:means\s+(?:in\s+respect\s+of\s+the\s+Debt\s+)?'
         r'the\s+period\s+from.{0,600})',
         text,
@@ -281,18 +236,13 @@ def extract_non_call_period(text, vintage=None):
 
 
 def extract_ccc_limit(text):
-    """
-    Extracts the maximum CCC obligation limit as a percentage.
-    Looks for the CCC line and the associated percentage in the portfolio
-    profile tests or collateral quality tests table.
-    Covers two formats: '7.5%' and '7.5 per cent.'
-    """
-    VALUE = r'(\d+(?:\.\d+)?)\s*(?:%|per\s+cent\.?)'
+    # extract CCC limit percentage from collateral quality tests table
+    VALUE = r'(\d+(?:\.\d+)?)\s*(?:%|per\s+cent\.?)' 
 
     patterns = [
         rf'CCC\s+Obligations?\s+N/A\s+{VALUE}',
         rf'S&P\s+CCC\s+Obligations?\s+N/A\s+{VALUE}',
-        rf'CCC\+["”]?\s+or\s+below[^.]*?(?:may\s+not\s+exceed|not\s+more\s+than)\s+{VALUE}',
+        rf'CCC\+[""]?\s+or\s+below[^.]*?(?:may\s+not\s+exceed|not\s+more\s+than)\s+{VALUE}',
         rf'maximum\s+(?:of\s+)?{VALUE}[^.]*?CCC',
         rf'CCC[^.]*?{VALUE}',
     ]
@@ -301,6 +251,7 @@ def extract_ccc_limit(text):
         match = re.search(pattern, text)
         if match:
             value = float(match.group(1))
+            # sanity check: any CCC limit outside 1-30% range is a parsing error
             if 1 <= value <= 30:
                 return value
 
@@ -308,21 +259,9 @@ def extract_ccc_limit(text):
 
 
 def extract_oc_ratio_class_a(text):
-    """
-    Extracts the Par Value Ratio (OC ratio) required for the most senior tranche.
-    Finds the Coverage Tests table and takes the first listed value.
-
-    Covers class label variants: 'A', 'A/B', 'Senior'
-    Covers name variants: 'Par Value Ratio', 'Principal Coverage Ratio'
-    Covers value format variants: '128.50%', '128.50 per cent.', '128.50' (bare number),
-    and dot-leader formats: 'A/B ......... 129.89%'
-
-    Note: in deals with a combined A/B tranche (e.g. Bridgepoint CLO IV), the
-    extracted ratio corresponds to the joint A/B test, not exclusively to tranche A.
-    This is documented in section 2.5 of the thesis.
-    """
-    VALUE_PCT = r'(\d{2,3}(?:\.\d+)?)\s*(?:%|per\s+cent\.?)'
-    VALUE_BARE = r'(\d{2,3}(?:\.\d+)?)'
+    # extract required OC (par value) ratio for Class A from coverage tests table
+    VALUE_PCT = r'(\d{2,3}(?:\.\d+)?)\s*(?:%|per\s+cent\.?)' 
+    VALUE_BARE = r'(\d{2,3}(?:\.\d+)?)' 
     CLASS = r'(?:A(?:/B)?|Senior)'
 
     patterns = [
@@ -339,6 +278,7 @@ def extract_oc_ratio_class_a(text):
         match = re.search(pattern, text, re.IGNORECASE)
         if match:
             value = float(match.group(1))
+            # realistic OC ratio range for CLO Class A tranches
             if 110 <= value <= 145:
                 return value
 
@@ -346,11 +286,7 @@ def extract_oc_ratio_class_a(text):
 
 
 def extract_num_tranches(text):
-    """
-    Counts the number of rated tranches (excludes Subordinated Notes).
-    Looks for lines in the format '€amount Class X ...' or table lines
-    starting with a class letter followed by a euro amount.
-    """
+    # count rated tranches from cover page (excludes sub notes)
     pattern_clean = re.findall(
         r'[€]\s*[\d,]+\s+Class\s+([A-F](?:-\d)?)\s+\w',
         text
@@ -372,9 +308,7 @@ def extract_num_tranches(text):
 
 
 def extract_class_a_size(text):
-    """
-    Extracts the size of the Class A tranche in millions of euros.
-    """
+    # extract Class A tranche size in EUR mn
     anchors = list(re.finditer(
         r'(?:designated activity company|besloten vennootschap|'
         r'private company with limited liability|société anonyme|'
@@ -438,9 +372,7 @@ def extract_class_a_size(text):
 
 
 def extract_sub_notes_size(text):
-    """
-    Extracts the size of the Subordinated Notes in millions of euros.
-    """
+    # extract subordinated notes size in EUR mn
     anchors = list(re.finditer(
         r'(?:designated activity company|besloten vennootschap|'
         r'private company with limited liability|société anonyme|'
@@ -501,14 +433,10 @@ def extract_sub_notes_size(text):
     return None
 
 
-# ---------------------------------------------------------------------------
-# Main parsing function
-# ---------------------------------------------------------------------------
+
 
 def parse_single_doc(filename, text):
-    """
-    Applies all extraction functions to a document and returns a dict of results.
-    """
+    # run all extraction functions on a single document
     manager, deal_name = extract_manager_and_deal(filename)
     vintage = extract_vintage(filename)
     reinvestment_end, reinvestment_duration = extract_reinvestment_period(text, vintage=vintage)
@@ -547,6 +475,7 @@ def main():
     output_path = os.path.join("data", "processed", "clo_dataset_raw.csv")
     df.to_csv(output_path, index=False)
 
+    # coverage report - useful for spotting which patterns need improvement
     print("\n--- Extraction coverage ---")
     for col in df.columns:
         non_null = df[col].notna().sum()

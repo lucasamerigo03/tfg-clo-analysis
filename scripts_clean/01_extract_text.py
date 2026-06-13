@@ -2,7 +2,7 @@ import pdfplumber
 import os
 from tqdm import tqdm
 
-# Paths relative to the project root
+# input/output directories relative to project root
 RAW_DIR = os.path.join("data", "raw")
 PROCESSED_DIR = os.path.join("data", "processed")
 
@@ -10,10 +10,7 @@ os.makedirs(PROCESSED_DIR, exist_ok=True)
 
 
 def extract_text_from_pdf(pdf_path):
-    """
-    Extracts text from all pages of a PDF.
-    Returns the concatenated text as a string, or None if extraction fails.
-    """
+    # extract text from all pages, return None on failure
     pages_text = []
     try:
         with pdfplumber.open(pdf_path) as pdf:
@@ -24,6 +21,7 @@ def extract_text_from_pdf(pdf_path):
     except Exception as e:
         print(f"  ERROR reading {os.path.basename(pdf_path)}: {e}")
         return None
+    # join pages with newline so page boundaries are visible in the text
     return "\n".join(pages_text)
 
 
@@ -39,13 +37,14 @@ def main():
         txt_filename = filename.replace(".pdf", ".txt")
         txt_path = os.path.join(PROCESSED_DIR, txt_filename)
 
-        # Skip if the .txt already exists
+        # skip if already converted — avoids reprocessing on reruns
         if os.path.exists(txt_path):
             success += 1
             continue
 
         text = extract_text_from_pdf(pdf_path)
 
+        # discard near-empty extractions (pdfplumber sometimes returns whitespace only)
         if text and len(text.strip()) > 100:
             with open(txt_path, "w", encoding="utf-8") as f:
                 f.write(text)

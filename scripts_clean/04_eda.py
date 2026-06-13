@@ -1,22 +1,3 @@
-"""
-04_eda.py
----------
-Exploratory Data Analysis for sections 3.1 and 3.2 of the TFG.
-
-Produces:
-  - outputs/tables/descriptive_stats.csv          : machine-readable stats table
-  - outputs/tables/descriptive_stats.png          : print-ready stats table image
-  - outputs/figures/histograms_main_vars.png      : grid of histograms (6 variables)
-  - outputs/figures/boxplot_oc_ratio.png          : OC ratio Class A by vintage
-  - outputs/figures/boxplot_reinvestment.png      : reinvestment period by vintage
-  - outputs/figures/boxplot_sub_notes_pct.png     : sub notes % by vintage
-  - outputs/figures/boxplot_deal_size.png         : total deal size by vintage
-  - outputs/figures/scatter_class_a_outlier.png   : annotated scatter to identify outlier
-
-Run from project root:
-  python scripts/04_eda.py
-"""
-
 import os
 import pandas as pd
 import numpy as np
@@ -24,10 +5,8 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 from matplotlib import rcParams
 
-# ---------------------------------------------------------------------------
-# Global plot settings
-# ---------------------------------------------------------------------------
 
+# global plot style - keeping it clean, no top/right spines
 rcParams['font.family'] = 'DejaVu Sans'
 rcParams['font.size'] = 10
 rcParams['axes.spines.top'] = False
@@ -43,9 +22,6 @@ ANNOTATE  = '#C0392B'
 
 DPI = 300
 
-# ---------------------------------------------------------------------------
-# Paths
-# ---------------------------------------------------------------------------
 
 DATA_PATH   = os.path.join('data', 'processed', 'clo_dataset_clean.csv')
 FIGURES_DIR = os.path.join('outputs', 'figures')
@@ -54,21 +30,15 @@ TABLES_DIR  = os.path.join('outputs', 'tables')
 os.makedirs(FIGURES_DIR, exist_ok=True)
 os.makedirs(TABLES_DIR,  exist_ok=True)
 
-# ---------------------------------------------------------------------------
-# Load data
-# ---------------------------------------------------------------------------
 
 df = pd.read_csv(DATA_PATH)
 df['vintage'] = df['vintage'].astype(int)
 
 print(f"Dataset loaded: {len(df)} deals, {df.shape[1]} variables")
-print(f"Vintage range: {df['vintage'].min()} – {df['vintage'].max()}")
+print(f"Vintage range: {df['vintage'].min()} -- {df['vintage'].max()}")
 
-# ---------------------------------------------------------------------------
-# Descriptive statistics table  (section 3.1)
-# ---------------------------------------------------------------------------
 
-# ccc_limit_pct excluded — constant at 7.5%; deal_size_log is a derived regressor
+# ccc excluded (constant); deal_size_log is a regressor not a summary var
 NUMERIC_VARS = [
     'total_deal_size_mn',
     'reinvestment_period',
@@ -79,14 +49,15 @@ NUMERIC_VARS = [
 ]
 
 VAR_LABELS = {
-    'total_deal_size_mn' : 'Total Deal Size (€mn)',
+    'total_deal_size_mn' : 'Total Deal Size (mn)',
     'reinvestment_period': 'Reinvestment Period (yrs)',
     'non_call_period'    : 'Non-Call Period (yrs)',
-    'oc_ratio_class_a'   : 'OC Ratio – Class A (%)',
+    'oc_ratio_class_a'   : 'OC Ratio - Class A (%)',
     'class_a_pct'        : 'Class A Tranche (% of deal)',
     'sub_notes_pct'      : 'Subordinated Notes (% of deal)',
 }
 
+# descriptive stats table: percentiles at 25/50/75 for the TFG results section
 stats = df[NUMERIC_VARS].describe(percentiles=[0.25, 0.50, 0.75]).T
 stats = stats[['count', 'mean', 'std', 'min', '25%', '50%', '75%', 'max']]
 stats.columns = ['N', 'Mean', 'Std Dev', 'Min', 'P25', 'Median', 'P75', 'Max']
@@ -117,22 +88,25 @@ table.auto_set_font_size(False)
 table.set_fontsize(9)
 table.scale(1, 1.6)
 
+# header row styling
 for j in range(len(stats_display.columns)):
     cell = table[0, j]
     cell.set_facecolor(PRIMARY)
     cell.set_text_props(color='white', fontweight='bold')
 
+# highlight the Max column
 for i in range(1, len(stats_display) + 1):
     cell = table[i, -1]
     cell.set_facecolor('#F0F4F8')
     cell.set_text_props(fontweight='bold')
 
+# alternating row background for readability
 for i in range(1, len(stats_display) + 1):
     bg = '#FFFFFF' if i % 2 == 1 else '#F7F9FB'
     for j in range(len(stats_display.columns)):
         table[i, j].set_facecolor(bg)
 
-fig.suptitle('Table 1 – Descriptive Statistics of Main Structural Variables',
+fig.suptitle('Table 1 - Descriptive Statistics of Main Structural Variables',
              fontsize=11, fontweight='bold', y=0.98)
 
 plt.tight_layout()
@@ -141,15 +115,13 @@ fig.savefig(png_path, dpi=DPI, bbox_inches='tight', facecolor='white')
 plt.close(fig)
 print(f"Saved: {png_path}")
 
-# ---------------------------------------------------------------------------
-# Histograms — 6 main variables  (section 3.1)
-# ---------------------------------------------------------------------------
 
+# histograms for all main variables - Figure 1 in the thesis
 HIST_XLABELS = {
-    'total_deal_size_mn' : 'Total Deal Size (€mn)',
+    'total_deal_size_mn' : 'Total Deal Size (mn)',
     'reinvestment_period': 'Reinvestment Period (years)',
     'non_call_period'    : 'Non-Call Period (years)',
-    'oc_ratio_class_a'   : 'OC Ratio – Class A (%)',
+    'oc_ratio_class_a'   : 'OC Ratio - Class A (%)',
     'class_a_pct'        : 'Class A Tranche (% of deal)',
     'sub_notes_pct'      : 'Subordinated Notes (% of deal)',
 }
@@ -161,6 +133,7 @@ for i, var in enumerate(NUMERIC_VARS):
     ax = axes[i]
     series = df[var].dropna()
 
+    # bin count: sqrt rule with floor/ceiling to avoid over/under-binning on n=36
     n_bins = min(15, max(8, int(np.sqrt(len(series)))))
     ax.hist(series, bins=n_bins, color=PRIMARY, edgecolor='white', linewidth=0.6, alpha=0.88)
 
@@ -175,7 +148,7 @@ for i, var in enumerate(NUMERIC_VARS):
     ax.grid(axis='y', color=GREY, linewidth=0.5, alpha=0.6)
     ax.tick_params(labelsize=8)
 
-fig.suptitle('Figure 1 – Distribution of Key Structural Variables (n = 36)',
+fig.suptitle('Figure 1 - Distribution of Key Structural Variables (n = 36)',
              fontsize=12, fontweight='bold', y=1.01)
 plt.tight_layout()
 
@@ -184,15 +157,9 @@ fig.savefig(hist_path, dpi=DPI, bbox_inches='tight', facecolor='white')
 plt.close(fig)
 print(f"Saved: {hist_path}")
 
-# ---------------------------------------------------------------------------
-# Helper: outlier annotation
-# ---------------------------------------------------------------------------
 
 def annotate_outliers(ax, df_sub, x_col, y_col, threshold_fn, label_col='deal_name'):
-    """
-    Annotates points where threshold_fn(series) is True.
-    threshold_fn: callable that takes a Series and returns a boolean mask.
-    """
+    # annotate outlier points; threshold_fn takes a Series and returns a bool mask
     mask = threshold_fn(df_sub[y_col])
     for _, row in df_sub[mask].iterrows():
         ax.annotate(
@@ -206,22 +173,20 @@ def annotate_outliers(ax, df_sub, x_col, y_col, threshold_fn, label_col='deal_na
             arrowprops = dict(arrowstyle='->', color=ANNOTATE, lw=0.8),
         )
 
-# ---------------------------------------------------------------------------
-# Boxplots by vintage — 4 key variables  (section 3.2)
-# ---------------------------------------------------------------------------
 
+# boxplot config for 4 variables - outlier thresholds chosen per variable
 BOXPLOT_CONFIG = [
     {
         'var'       : 'oc_ratio_class_a',
-        'ylabel'    : 'OC Ratio – Class A (%)',
-        'title'     : 'Figure 2 – OC Ratio (Class A) by Vintage',
+        'ylabel'    : 'OC Ratio - Class A (%)',
+        'title'     : 'Figure 2 - OC Ratio (Class A) by Vintage',
         'filename'  : 'boxplot_oc_ratio.png',
         'outlier_fn': lambda s: np.abs(s - s.mean()) > 2 * s.std(),
     },
     {
         'var'       : 'reinvestment_period',
         'ylabel'    : 'Reinvestment Period (years)',
-        'title'     : 'Figure 3 – Reinvestment Period by Vintage',
+        'title'     : 'Figure 3 - Reinvestment Period by Vintage',
         'filename'  : 'boxplot_reinvestment.png',
         # Known structural outlier: CQS deal with ~1.8 years (probable reset)
         'outlier_fn': lambda s: s < 2.5,
@@ -229,14 +194,14 @@ BOXPLOT_CONFIG = [
     {
         'var'       : 'sub_notes_pct',
         'ylabel'    : 'Subordinated Notes (% of deal)',
-        'title'     : 'Figure 4 – Subordinated Notes Size by Vintage',
+        'title'     : 'Figure 4 - Subordinated Notes Size by Vintage',
         'filename'  : 'boxplot_sub_notes_pct.png',
         'outlier_fn': lambda s: np.abs(s - s.mean()) > 2 * s.std(),
     },
     {
         'var'       : 'total_deal_size_mn',
-        'ylabel'    : 'Total Deal Size (€mn)',
-        'title'     : 'Figure 5 – Total Deal Size by Vintage',
+        'ylabel'    : 'Total Deal Size (mn)',
+        'title'     : 'Figure 5 - Total Deal Size by Vintage',
         'filename'  : 'boxplot_deal_size.png',
         'outlier_fn': lambda s: np.abs(s - s.mean()) > 2 * s.std(),
     },
@@ -263,6 +228,7 @@ for cfg in BOXPLOT_CONFIG:
         flierprops   = dict(marker='o', color=GREY, markersize=4),
     )
 
+    # jitter individual points on top of the boxplot for transparency (n is small)
     for j, (v, grp) in enumerate(zip(vintages_sorted, groups), start=1):
         x_jitter = np.random.default_rng(seed=42).uniform(-0.15, 0.15, size=len(grp))
         ax.scatter(np.full(len(grp), j) + x_jitter, grp,
@@ -283,6 +249,7 @@ for cfg in BOXPLOT_CONFIG:
     ax.grid(axis='y', color=GREY, linewidth=0.5, alpha=0.6)
     ax.tick_params(axis='y', labelsize=9)
 
+    # sample size per vintage below x-axis
     for j, v in enumerate(vintages_sorted, start=1):
         n = len(df[df['vintage'] == v])
         ax.text(j, ax.get_ylim()[0] - (ax.get_ylim()[1] - ax.get_ylim()[0]) * 0.07,
@@ -294,10 +261,8 @@ for cfg in BOXPLOT_CONFIG:
     plt.close(fig)
     print(f"Saved: {out_path}")
 
-# ---------------------------------------------------------------------------
-# Annotated scatter — class_a_pct outlier identification  (section 3.2)
-# ---------------------------------------------------------------------------
 
+# Figure 6 - Class A tranche scatter with outlier annotation
 fig, ax = plt.subplots(figsize=(9, 5))
 
 ax.scatter(df['vintage'], df['class_a_pct'],
@@ -306,9 +271,10 @@ ax.scatter(df['vintage'], df['class_a_pct'],
 mean_val = df['class_a_pct'].mean()
 std_val  = df['class_a_pct'].std()
 ax.axhline(mean_val,             color=SECONDARY, linewidth=1.5, linestyle='--', label=f'Mean ({mean_val:.1f}%)')
-ax.axhline(mean_val + 2*std_val, color=GREY,      linewidth=1.0, linestyle=':',  label=f'Mean ± 2 SD')
+ax.axhline(mean_val + 2*std_val, color=GREY,      linewidth=1.0, linestyle=':',  label=f'Mean +/- 2 SD')
 ax.axhline(mean_val - 2*std_val, color=GREY,      linewidth=1.0, linestyle=':')
 
+# label deals that exceed mean + 2SD threshold
 outlier_mask = df['class_a_pct'] > mean_val + 2 * std_val
 for _, row in df[outlier_mask].iterrows():
     ax.annotate(
@@ -324,7 +290,7 @@ for _, row in df[outlier_mask].iterrows():
 
 ax.set_xlabel('Vintage', fontsize=10)
 ax.set_ylabel('Class A Tranche (% of deal)', fontsize=10)
-ax.set_title('Figure 6 – Class A Tranche Size by Vintage\n(annotated outlier: > mean + 2 SD)',
+ax.set_title('Figure 6 - Class A Tranche Size by Vintage\n(annotated outlier: > mean + 2 SD)',
              fontsize=11, fontweight='bold')
 ax.legend(fontsize=9, frameon=False)
 ax.grid(color=GREY, linewidth=0.5, alpha=0.5)
@@ -336,12 +302,10 @@ fig.savefig(scatter_path, dpi=DPI, bbox_inches='tight', facecolor='white')
 plt.close(fig)
 print(f"Saved: {scatter_path}")
 
-# ---------------------------------------------------------------------------
-# Console summary — key observations for section 3.2 text
-# ---------------------------------------------------------------------------
 
+# console output used when writing sections 4.1 and 4.2
 print("\n" + "="*60)
-print("KEY OBSERVATIONS — for TFG sections 3.1 / 3.2")
+print("KEY OBSERVATIONS -- for TFG sections 3.1 / 3.2")
 print("="*60)
 
 print("\n--- Descriptive stats (main variables) ---")

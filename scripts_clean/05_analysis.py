@@ -1,9 +1,3 @@
-"""
-05_analysis.py
-Quantitative analysis for section 3.3: correlation matrix, OLS regressions,
-and VIF diagnostics. Outputs figures and tables to outputs/figures/ and outputs/tables/.
-"""
-
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -22,16 +16,16 @@ TAB_DIR.mkdir(parents=True, exist_ok=True)
 
 df = pd.read_csv(DATA_PATH)
 
+# two dependent variables, same set of regressors for both models
 DEP_VARS   = ["oc_ratio_class_a", "class_a_pct"]
 REGRESSORS = ["reinvestment_period", "sub_notes_pct", "vintage"]
 CORR_VARS  = DEP_VARS + REGRESSORS
 
-# ---------------------------------------------------------------------------
-# 1. Correlation heatmap
-# ---------------------------------------------------------------------------
 
+# Pearson correlation matrix across dependent vars and regressors
 corr_matrix = df[CORR_VARS].corr()
 
+# display labels for the heatmap - shorter names fit better in the grid
 DISPLAY_LABELS = {
     "oc_ratio_class_a":    "OC Ratio\n(Class A)",
     "class_a_pct":         "Class A\n(%)",
@@ -58,28 +52,23 @@ sns.heatmap(
     yticklabels=labels,
     cbar_kws={"shrink": 0.8, "label": "Pearson r"},
 )
-ax.set_title("Correlation Matrix — Key Structural Variables", fontsize=12, pad=14)
+ax.set_title("Correlation Matrix - Key Structural Variables", fontsize=12, pad=14)
 ax.tick_params(axis="both", labelsize=8.5)
 plt.tight_layout()
 fig.savefig(FIG_DIR / "correlation_heatmap.png", dpi=300)
 plt.close(fig)
 print("Saved: correlation_heatmap.png")
 
-# ---------------------------------------------------------------------------
-# 2. OLS regression helper
-# ---------------------------------------------------------------------------
 
 def run_ols(dep_var, regressors, data):
-    """
-    Fits an OLS model with a constant. Returns the fitted model,
-    a summary DataFrame, and a VIF DataFrame.
-    """
+    # fit OLS with constant; returns model, summary df, vif df
     y = data[dep_var]
     X = data[regressors]
     X_const = sm.add_constant(X)
 
     model = sm.OLS(y, X_const).fit()
 
+    # build a clean summary table from the statsmodels output
     summary_df = pd.DataFrame({
         "Variable":    ["Constant"] + regressors,
         "Coefficient": model.params.values,
@@ -91,6 +80,7 @@ def run_ols(dep_var, regressors, data):
         lambda p: "***" if p < 0.01 else ("**" if p < 0.05 else ("*" if p < 0.10 else ""))
     )
 
+    # VIF to check for multicollinearity between regressors
     vif_df = pd.DataFrame({
         "Variable": regressors,
         "VIF": [variance_inflation_factor(X.values, i) for i in range(X.shape[1])],
@@ -100,24 +90,18 @@ def run_ols(dep_var, regressors, data):
 
 
 def format_regression_stats(model, n):
-    """Returns a one-row DataFrame with model-level fit statistics."""
+    # model-level fit stats as a one-row df
     return pd.DataFrame([{
         "N":       n,
-        "R²":      round(model.rsquared, 4),
-        "Adj. R²": round(model.rsquared_adj, 4),
+        "R^2":     round(model.rsquared, 4),
+        "Adj. R^2": round(model.rsquared_adj, 4),
         "F-stat":  round(model.fvalue, 3),
         "Prob(F)": round(model.f_pvalue, 4),
     }])
 
-# ---------------------------------------------------------------------------
-# 3. Save regression table as PNG
-# ---------------------------------------------------------------------------
 
 def save_table_png(summary_df, vif_df, fit_stats, title, filepath):
-    """
-    Renders the coefficient table, VIF table, and fit statistics
-    as a single PNG figure suitable for embedding in Word.
-    """
+    # save regression results as PNG (coefs + VIF + fit stats)
     coef_display = summary_df.copy()
     for col in ["Coefficient", "Std Error", "t-stat"]:
         coef_display[col] = coef_display[col].round(4)
@@ -129,6 +113,7 @@ def save_table_png(summary_df, vif_df, fit_stats, title, filepath):
     fig = plt.figure(figsize=(10, 5.5))
     fig.suptitle(title, fontsize=11, fontweight="bold", y=0.98)
 
+    # coefficient table takes the upper portion of the figure
     ax_coef = fig.add_axes([0.02, 0.42, 0.96, 0.50])
     ax_coef.axis("off")
     tbl = ax_coef.table(
@@ -184,40 +169,34 @@ def save_table_png(summary_df, vif_df, fit_stats, title, filepath):
     plt.close(fig)
     print(f"Saved: {filepath.name}")
 
-# ---------------------------------------------------------------------------
-# 4. Regression 1: oc_ratio_class_a
-# ---------------------------------------------------------------------------
 
+# Model 1: OC ratio as dependent variable
 model1, summary1, vif1 = run_ols("oc_ratio_class_a", REGRESSORS, df)
 fit1 = format_regression_stats(model1, len(df))
 
 save_table_png(
     summary1, vif1, fit1,
-    title="OLS Regression — Dependent Variable: OC Ratio (Class A)",
+    title="OLS Regression - Dependent Variable: OC Ratio (Class A)",
     filepath=FIG_DIR / "regression_oc_ratio.png",
 )
 summary1.to_csv(TAB_DIR / "regression_oc_ratio.csv", index=False)
 print("Saved: regression_oc_ratio.csv")
 
-# ---------------------------------------------------------------------------
-# 5. Regression 2: class_a_pct
-# ---------------------------------------------------------------------------
 
+# Model 2: Class A tranche size as dependent variable
 model2, summary2, vif2 = run_ols("class_a_pct", REGRESSORS, df)
 fit2 = format_regression_stats(model2, len(df))
 
 save_table_png(
     summary2, vif2, fit2,
-    title="OLS Regression — Dependent Variable: Class A (%)",
+    title="OLS Regression - Dependent Variable: Class A (%)",
     filepath=FIG_DIR / "regression_class_a_pct.png",
 )
 summary2.to_csv(TAB_DIR / "regression_class_a_pct.csv", index=False)
 print("Saved: regression_class_a_pct.csv")
 
-# ---------------------------------------------------------------------------
-# 6. Console summary
-# ---------------------------------------------------------------------------
 
+# full statsmodels output to console for reference when writing section 4.3
 print("\n" + "="*60)
 print("REGRESSION 1: oc_ratio_class_a")
 print("="*60)
@@ -228,7 +207,7 @@ print("REGRESSION 2: class_a_pct")
 print("="*60)
 print(model2.summary())
 
-print("\nVIF — Regression 1:")
+print("\nVIF -- Regression 1:")
 print(vif1.to_string(index=False))
-print("\nVIF — Regression 2:")
+print("\nVIF -- Regression 2:")
 print(vif2.to_string(index=False))
